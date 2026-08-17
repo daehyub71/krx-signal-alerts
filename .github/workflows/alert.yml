@@ -1,0 +1,62 @@
+name: alert
+
+# 평일 아침 08:20 KST. GitHub cron은 UTC이므로 23:20 UTC이고,
+# 요일도 하루 당겨진다 — 한국 월~금 = UTC 일~목(0-4).
+#
+# ⚠ GitHub의 예약 실행은 정시를 보장하지 않는다. 부하에 따라 수 분~수십 분 밀린다.
+#    08:20으로 잡은 것은 장 시작(09:00) 전에 여유를 두기 위해서다.
+on:
+  schedule:
+    - cron: "20 23 * * 0-4"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "발송 채널"
+        type: choice
+        options: [both, email, kakao]
+        default: both
+      dry_run:
+        description: "발송하지 않고 결과만 본다"
+        type: boolean
+        default: false
+
+# 최소 권한. 이 워크플로는 저장소에 아무것도 쓰지 않는다.
+permissions:
+  contents: read
+
+concurrency:
+  group: alert
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 스크리닝 · 발송
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          SIGNALS_WEB_URL: ${{ vars.SIGNALS_WEB_URL }}
+        run: |
+          python -m alerts.main \
+            --channel "${{ inputs.channel || 'both' }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
