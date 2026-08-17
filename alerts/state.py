@@ -58,9 +58,13 @@ class AlertState(TypedDict, total=False):
     ranked: list[Signal]
     kakao_top: list[Signal]        # 카카오에 담을 상위 N건 (D8)
 
-    # 발송 2개가 동시에 쓰는 키 — 리듀서 필수
+    # 발송 노드가 각자 쓰는 키. 순차 실행이지만 리듀서를 유지한다 —
+    # 없으면 뒤 노드가 앞 노드의 결과를 덮어써 실패 기록이 사라진다.
     results: Annotated[dict[str, SendResult], merge_results]
     status: str
+
+    # 카카오가 새로 발급한 리프레시 토큰. 저장하지 않으면 2개월 뒤 조용히 죽는다 (R2).
+    kakao_refresh: str
 
 
 def initial_state(
@@ -92,4 +96,5 @@ def initial_state(
         kakao_top=[],
         results={},
         status=STATUS_OK,
+        kakao_refresh="",
     )

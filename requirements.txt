@@ -1,2 +1,4 @@
 langgraph>=1.2,<2
 supabase>=2.31,<3
+# macOS 파이썬은 CA 번들이 없다. 명시적으로 쓴다 (alerts/notify/tls.py)
+certifi>=2024.0

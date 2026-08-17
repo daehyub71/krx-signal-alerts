@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from alerts import nodes
 from alerts.graph import build_graph
 from alerts.models import STRATEGY_NAMES, SendResult, Signal, StrategyName
 from alerts.nodes import AlertRunError
@@ -73,14 +74,34 @@ def failed_send_node(channel: str, error: str = "boom") -> Any:
     return node
 
 
-# DB를 타는 노드는 **항상** 스텁으로 덮는다.
+def ok_send_node(channel: str) -> Any:
+    """네트워크 없이 성공한 척하는 발송 스텁."""
+
+    def node(state: AlertState) -> dict[str, Any]:
+        if channel not in state.get("channels", []):
+            return {}
+        return {"results": {channel: SendResult(channel=channel, ok=True)}}
+
+    return node
+
+
+def status_only_record_run(state: AlertState) -> dict[str, Any]:
+    """DB 쓰기를 뺀 record_run — 상태 판정 로직은 실제 것을 그대로 쓴다."""
+    return {"status": nodes._status_of(state)}
+
+
+# DB·네트워크를 타는 노드는 **항상** 스텁으로 덮는다.
 # 배선 테스트가 실DB에 붙으면 네트워크 없이는 못 돌고, 느려지고, 데이터에 따라 결과가 흔들린다.
+# 새 I/O 노드를 추가하면 여기에도 넣어야 한다.
 IO_NODES = ("load_meta", "build_universe", "load_bars", "suppress", "persist")
 
 
 def wiring(**overrides: Any) -> Any:
     """I/O가 차단된 그래프. 배선만 검사한다 (PLAN §6)."""
     stubs: dict[str, Any] = {n: const_node({}) for n in IO_NODES}
+    stubs["send_email"] = ok_send_node("email")
+    stubs["send_kakao"] = ok_send_node("kakao")
+    stubs["record_run"] = status_only_record_run
     stubs.update(overrides)
     return build_graph(stubs)
 

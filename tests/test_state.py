@@ -31,6 +31,7 @@ def test_initial_state_fills_every_key() -> None:
     expected = {
         "run_date", "channels", "dry_run", "data_date", "stale",
         "universe", "bars", "signals", "ranked", "kakao_top", "results", "status",
+        "kakao_refresh",
     }
     assert set(state) == expected
     assert state["status"] == STATUS_OK

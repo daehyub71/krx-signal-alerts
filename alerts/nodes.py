@@ -3,18 +3,19 @@
 **노드는 얇다** (SPEC N11). 상태에서 값을 꺼내 도메인 함수를 부르고 결과를 상태에 담는 것까지가
 노드의 일이다. 함수 하나가 20줄을 넘으면 로직이 새어 들어온 것이니 도메인 모듈로 옮긴다.
 
-M0 단계에서는 전부 통과 함수다. `TODO(M?)` 표시가 붙은 자리를 마일스톤별로 채운다.
+부수효과(DB·네트워크)를 아는 노드는 `store`·`notify`를 부르고, 나머지는 순수 함수만 부른다.
 """
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
+from alerts import config, render, store, strategies, universe
 from alerts import rank as ranking
-from alerts import store, strategies, universe
 from alerts.freshness import is_stale
 from alerts.models import STRATEGY_LABELS, SendResult, StrategyName
+from alerts.notify import email, kakao
 from alerts.state import (
     STATUS_FAILED,
     STATUS_OK,
@@ -158,50 +159,126 @@ def persist(state: AlertState) -> dict[str, Any]:
     return {}
 
 
-# ── 발송 (병렬 2) ───────────────────────────────────────────────
+# ── 발송 (순차 2: 메일 → 카카오) ────────────────────────────────
 #
 # 이 두 노드는 **예외를 밖으로 내지 않는다** (SPEC F13c).
 # raise하면 record_run에 닿지 못해 실패 기록 자체가 사라진다.
+#
+# 병렬이 아닌 이유: 병렬이면 서로의 실패를 모른다. 순차로 두면 뒤에 오는
+# 카카오가 메일의 실패를 실어 나를 수 있다. 발송은 전체 70초 중 2~3초다.
 
 
-def send_kakao(state: AlertState) -> dict[str, Any]:
-    """카카오톡 나에게 보내기 — 상위 10건 요약 (F13).
+def _skip(channel: str, state: AlertState) -> bool:
+    """이 채널을 건너뛰는가 (미선택이거나 드라이런)."""
+    if channel not in state.get("channels", []):
+        return True
+    if state.get("dry_run"):
+        print(f"[{channel}] dry-run — 발송 생략")
+        return True
+    return False
 
-    TODO(M3): notify.kakao.send()
-    """
-    if "kakao" not in state.get("channels", []):
-        return {}
-    return {"results": {"kakao": SendResult(channel="kakao", ok=True)}}
+
+def _report_date(state: AlertState) -> date:
+    """알림에 표기할 날짜 — 데이터 기준일. 없으면 실행일."""
+    return state.get("data_date") or state["run_date"]
 
 
 def send_email(state: AlertState) -> dict[str, Any]:
     """이메일 — 전 신호와 조건별 근거값 (F13b).
 
-    TODO(M3): notify.email.send()
+    **먼저 보낸다.** 길이 제한이 없어 내용을 다 담는 쪽이고, 토큰 만료 같은
+    조용한 실패 모드가 없어 더 믿을 만하다.
+
+    **예외를 밖으로 내지 않는다** (F13c).
     """
-    if "email" not in state.get("channels", []):
+    if _skip("email", state):
         return {}
-    return {"results": {"email": SendResult(channel="email", ok=True)}}
+    live = [s for s in state.get("ranked", []) if not s.suppressed]
+    d, stale = _report_date(state), state.get("stale", False)
+    url = config.optional("SIGNALS_WEB_URL")
+    try:
+        n = email.send(
+            render.email_subject(live, d, stale=stale),
+            render.email_text(live, d, web_url=url, stale=stale),
+            render.email_html(live, d, web_url=url, stale=stale),
+        )
+    except Exception as exc:  # noqa: BLE001 — 어떤 실패든 결과로 바꿔 담는다
+        print(f"[email] 실패: {exc}")
+        return {"results": {"email": SendResult("email", ok=False, error=str(exc)[:200])}}
+    print(f"[email] {len(live)}건 발송 → 수신자 {n}명")
+    return {"results": {"email": SendResult("email", ok=True, sent_n=len(live))}}
+
+
+def send_kakao(state: AlertState) -> dict[str, Any]:
+    """카카오톡 나에게 보내기 — 상위 10건 요약 (F13).
+
+    **메일 다음에 보낸다.** 그래야 메일이 죽었을 때 이 메시지가 알려 줄 수 있다 (F13c).
+
+    **예외를 밖으로 내지 않는다.**
+    """
+    if _skip("kakao", state):
+        return {}
+    top = state.get("kakao_top", [])
+    mail = state.get("results", {}).get("email")
+    warning = "메일 발송 실패" if mail is not None and not mail.ok else ""
+
+    body = render.kakao_body(
+        top, _report_date(state), stale=state.get("stale", False), warning=warning
+    )
+    try:
+        tokens = kakao.refresh_access_token(config.require("KAKAO_REFRESH_TOKEN"))
+        kakao.send_text(tokens.access, body, config.optional("SIGNALS_WEB_URL"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[kakao] 실패: {exc}")
+        return {"results": {"kakao": SendResult("kakao", ok=False, error=str(exc)[:200])}}
+
+    print(f"[kakao] {len(top)}건 발송 ({len(body)}자)")
+    out: dict[str, Any] = {"results": {"kakao": SendResult("kakao", ok=True, sent_n=len(top))}}
+    if tokens.refresh:
+        # 카카오가 새 리프레시 토큰을 줬다. 저장하지 않으면 옛 토큰으로 계속
+        # 시도하다 2개월 뒤 조용히 죽는다 (R2).
+        out["kakao_refresh"] = tokens.refresh
+    return out
 
 
 # ── 마감 ────────────────────────────────────────────────────────
+
+
+def _status_of(state: AlertState) -> str:
+    """채널 결과로 최종 상태를 정한다."""
+    results = state.get("results", {})
+    failed = [r for r in results.values() if not r.ok]
+    if not results:
+        return state.get("status", STATUS_OK)
+    if not failed:
+        return STATUS_STALE if state.get("stale") else STATUS_OK
+    return STATUS_FAILED if len(failed) == len(results) else STATUS_PARTIAL
 
 
 def record_run(state: AlertState) -> dict[str, Any]:
     """실행 결과를 `ksa_runs`에 남기고 최종 상태를 정한다 (F13c).
 
     실패해도 **기록이 먼저**다. 예외를 먼저 던지면 원인이 사라진다.
-
-    TODO(M3): store.insert_run()
     """
     results = state.get("results", {})
-    failed = [r.channel for r in results.values() if not r.ok]
-    if not results:
-        status = state.get("status", STATUS_OK)
-    elif not failed:
-        status = STATUS_STALE if state.get("stale") else STATUS_OK
-    else:
-        status = STATUS_FAILED if len(failed) == len(results) else STATUS_PARTIAL
+    status = _status_of(state)
+    record = {
+        "data_date": (d.isoformat() if (d := state.get("data_date")) else None),
+        "universe_n": len(state.get("universe", [])),
+        "signal_n": len(state.get("signals", [])),
+        "sent_kakao_n": results["kakao"].sent_n if "kakao" in results else 0,
+        "sent_email_n": results["email"].sent_n if "email" in results else 0,
+        "status": status,
+        "detail": {
+            c: {"ok": r.ok, "sent_n": r.sent_n, "error": r.error} for c, r in results.items()
+        },
+    }
+    if not state.get("dry_run"):
+        try:
+            store.insert_run(store.rest_client(), record)
+        except Exception as exc:  # noqa: BLE001 — 기록 실패가 알림을 삼키면 안 된다
+            print(f"[record_run] 기록 실패(무시): {exc}")
+    print(f"[record_run] status={status}")
     return {"status": status}
 
 

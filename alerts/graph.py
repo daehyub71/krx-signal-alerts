@@ -21,7 +21,8 @@ from alerts.state import AlertState
 # 전송 재시도는 notify/ 클라이언트 안에서 한다.
 NETWORK_RETRY = RetryPolicy(max_attempts=3, initial_interval=1.0, backoff_factor=2.0)
 
-SEND_NODES = ("send_kakao", "send_email")
+# 순서가 의미를 갖는다 — 메일이 먼저, 카카오가 뒤 (F13c).
+SEND_NODES = ("send_email", "send_kakao")
 
 
 def build_graph(overrides: Mapping[str, Callable[[AlertState], Any]] | None = None) -> Any:
@@ -81,10 +82,17 @@ def build_graph(overrides: Mapping[str, Callable[[AlertState], Any]] | None = No
     g.add_edge("rank", "persist")
 
     # 정상 경로와 중단 경로가 여기서 만난다. 낡은 데이터여도 침묵하지 않는다 (D10).
-    for send in SEND_NODES:
-        g.add_edge("persist", send)
-        g.add_edge("abort_stale", send)
-        g.add_edge(send, "record_run")
+    #
+    # 발송은 **병렬이 아니라 순차**다 (2026-08-17 변경). 병렬로 두면 두 노드가
+    # 서로의 실패를 모르므로 "살아 있는 채널이 죽은 채널을 알려 준다"(F13c)가
+    # 성립하지 않는다. 발송은 전체 70초 중 2~3초라 병렬로 얻는 것이 없다.
+    #
+    # 메일이 먼저다 — 내용을 다 담는 쪽이고 조용한 실패 모드가 없다. 카카오가
+    # 뒤따르며 메일의 실패를 실어 나른다.
+    g.add_edge("persist", "send_email")
+    g.add_edge("abort_stale", "send_email")
+    g.add_edge("send_email", "send_kakao")
+    g.add_edge("send_kakao", "record_run")
 
     g.add_edge("record_run", "finalize")
     g.add_edge("finalize", END)
