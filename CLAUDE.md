@@ -61,7 +61,7 @@ ruff check .        # 1. 린트
 mypy alerts/        # 2. 타입 체크 (strict)
 pytest tests/ -v    # 3. 테스트
 
-cd web && npm run lint && npm test && npm run build   # 웹 (M5 이후)
+cd web && npm run lint && npm test && npm run build   # 웹
 ```
 
 ## 자격증명
@@ -77,6 +77,8 @@ cd web && npm run lint && npm test && npm run build   # 웹 (M5 이후)
 | `KAKAO_REFRESH_TOKEN` | 최초 인가로 발급. 갱신되면 **반드시 저장**한다 (약 2개월) |
 | `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` | Gmail SMTP (앱 비밀번호 — 계정 비밀번호가 아니다) |
 | `RECIPIENTS` | 수신자 쉼표 구분 목록 |
+| `SIGNALS_WEB_URL` | 알림 본문 하단 링크 (CI에서는 Secret이 아니라 **variable**) |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 웹 전용 (`web/.env.local`, Vercel 환경변수) |
 
 ## 이 프로젝트에서 조심할 것
 
@@ -105,6 +107,16 @@ cd web && npm run lint && npm test && npm run build   # 웹 (M5 이후)
 - **메일 HTML은 이스케이프한다** — 종목명에 `&`가 들어가면 깨진다.
 - **`ksc_*` 테이블에 쓰지 않는다** — 상위 프로젝트 소유다.
 - **pip/npm은 이 디렉토리(또는 `web/`)에서** — 워크스페이스 루트 오설치 사례 있음.
+- **`create table if not exists`는 마이그레이션이 아니다** — 이미 있는 테이블에 열을 추가하지
+  않는다. 정의만 고치면 새 DB에서만 반영되고 운영 DB는 **조용히 그대로** 남는다.
+  열을 늘릴 때는 `schema.sql`에 `alter table ... add column if not exists`를 반드시 더한다.
+- **표시용 값은 언제나 일봉에서 뽑는다** — 전략마다 기준 봉이 달라(주봉 눌림목·월봉 턴어라운드)
+  각자의 봉에서 뽑으면 한 표에 주간 합계와 일간 값이 섞여 정렬이 무의미해진다.
+  전략 고유 값은 `conditions`에 이미 들어 있다 (`strategies/base.make_signal`).
+- **날짜에서 요일을 뽑을 때 시간대를 끌어들이지 않는다** — `new Date(iso+"T00:00:00+09:00")`을
+  `getUTCDay()`로 읽으면 **하루 밀린다.** `Date.UTC(y, m-1, d)`를 쓴다 (`web/lib/format.ts`).
+- **의존성이 역할을 바꾸면 파일도 옮긴다** — psycopg가 스키마 전용에서 런타임으로 승격됐는데
+  `requirements-dev.txt`에 남아 CI에서 `ModuleNotFoundError`가 났다. 로컬은 dev를 깔아 안 보인다.
 
 ## 선행 프로젝트
 
@@ -115,7 +127,19 @@ cd web && npm run lint && npm test && npm run build   # 웹 (M5 이후)
 
 ## 진행 상태
 
-- **SPEC v1.0 확정** (2026-08-17) — D1~D15 전부 확정. `PLAN.md`·`TASKS.md` 작성 완료.
-- **M0 착수 대기.** 진도는 `docs/TASKS.md` 대시보드 참조.
-- ⚠ 수용된 이슈: anon 키가 같은 Supabase의 다른 테이블 12개를 읽는 문제
-  (2026-08-17 사용자 "그대로 두고 진행" — SPEC R4).
+**M0~M6 완료 · 배포됨** (2026-08-17). 진도는 `docs/TASKS.md` 대시보드 참조.
+
+| 항목 | 값 |
+|------|-----|
+| 저장소 | `daehyub71/krx-signal-alerts` (**public**) |
+| 웹 | https://krx-signal-alerts.vercel.app |
+| 자동 발송 | 평일 **08:20 KST** GitHub Actions (`20 23 * * 0-4`) |
+| 채널 | 메일(전 신호 + 근거값) → 카카오톡(상위 10건) **순차** |
+| 규모 | 유니버스 1,192종목 · 배치 약 70초 · 억제 후 일 14.7건 |
+| 테스트 | 배치 183 · 웹 8 |
+
+⚠ **미해소** (`docs/TASKS.md` 「미해소 이슈」 참조)
+- ① anon 키가 같은 Supabase의 RLS 꺼진 테이블 27개를 **읽고 쓸 수 있다**
+  (2026-08-17 사용자 "그대로 두고 진행" — SPEC R4). `ksa_*`는 RLS로 안전함을 확인했다.
+- ⑥ 카카오 리프레시 토큰 Secret 자동 갱신 미구현. **약 2개월 뒤 `KOE322`로 시끄럽게 실패**하면
+  `scripts/kakao_auth.py`로 재발급해 Secret을 손으로 갱신한다.

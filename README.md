@@ -6,6 +6,8 @@ A morning screener for the Korean stock market. Every weekday at 08:20 KST it ru
 five swing/trend strategies across every liquid KOSPI and KOSDAQ ticker and delivers
 the result to KakaoTalk and email before the market opens.
 
+**Live: [https://krx-signal-alerts.vercel.app](https://krx-signal-alerts.vercel.app)**
+
 Signals are a **watchlist, not trade instructions**. The project does not suggest entry
 or exit prices, does not backtest returns, and does not place orders.
 
@@ -18,6 +20,8 @@ krx-stock-charts (separate repo)          this repo
                                        ksa_signals / ksa_runs
                                                 │
                                     email (all) + KakaoTalk (top 10)
+                                                │
+                                          web /signals
 ```
 
 Prices are not collected here. The batch reads the `ksc_*` tables that
@@ -74,9 +78,8 @@ python scripts/export_graph.py           # regenerate docs/GRAPH.md
 ## Checks
 
 ```bash
-ruff check .   # lint
-mypy           # strict
-pytest -q      # 181 tests
+ruff check . && mypy && pytest -q          # batch — 183 tests
+cd web && npm run lint && npm test && npm run build   # web — 8 tests
 ```
 
 ## Layout
@@ -87,9 +90,10 @@ alerts/
   strategies/ rank.py render.py universe.py indicators.py freshness.py schedule.py
                                 pure functions — no framework, no I/O
   store.py notify/ main.py      the only layer that knows the network
+web/                            Next.js 16 — one screen, detail expands in place
 supabase/schema.sql             ksa_signals, ksa_runs, RLS
 scripts/                        schema, kakao auth, dryrun, graph export
-docs/                           SPEC · PLAN · TASKS · GRAPH
+docs/                           SPEC · PLAN · DESIGN · TASKS · GRAPH
 ```
 
 Domain code does not import LangGraph. Nodes stay under twenty lines; anything longer
@@ -105,6 +109,10 @@ skips a ticker that did not trade on the judgement day.
 
 **Pullback fired on flat stocks.** "MA60 above MA60 four weeks ago" is true after a
 single up bar nudges it 0.03%. The slope now needs 0.5%.
+
+And one the web caught: **amount and change were mixed across timeframes.** Pullback
+reported a weekly turnover next to MTF's daily figure in the same column, which makes
+sorting meaningless. Display values now always come from the daily bar.
 
 ## License
 

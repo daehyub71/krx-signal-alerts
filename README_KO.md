@@ -5,6 +5,8 @@
 국내 주식 아침 스크리너. 평일 08:20 KST에 유동성이 받쳐 주는 코스피·코스닥 전 종목을
 다섯 가지 스윙·추세 전략으로 훑어, 장 시작 전에 카카오톡과 이메일로 보냅니다.
 
+**배포: [https://krx-signal-alerts.vercel.app](https://krx-signal-alerts.vercel.app)**
+
 신호는 **관찰 후보 목록이지 매매 지시가 아닙니다.** 목표가·손절가를 제시하지 않고,
 수익률을 검증하지도, 주문을 내지도 않습니다.
 
@@ -17,6 +19,8 @@ krx-stock-charts (별도 저장소)              이 저장소
                                        ksa_signals / ksa_runs
                                                 │
                                      메일(전체) + 카카오톡(상위 10)
+                                                │
+                                          웹 /signals
 ```
 
 시세를 직접 수집하지 않습니다. [krx-stock-charts](https://github.com/daehyub71/krx-stock-charts)가
@@ -71,9 +75,8 @@ python scripts/export_graph.py           # docs/GRAPH.md 재생성
 ## 검증
 
 ```bash
-ruff check .   # 린트
-mypy           # strict
-pytest -q      # 테스트 181개
+ruff check . && mypy && pytest -q                      # 배치 — 테스트 183개
+cd web && npm run lint && npm test && npm run build    # 웹 — 테스트 8개
 ```
 
 ## 구조
@@ -84,9 +87,10 @@ alerts/
   strategies/ rank.py render.py universe.py indicators.py freshness.py schedule.py
                                 순수 함수 — 프레임워크도 I/O도 모른다
   store.py notify/ main.py      네트워크를 아는 유일한 층
+web/                            Next.js 16 — 한 화면, 상세는 제자리에서 펼쳐진다
 supabase/schema.sql             ksa_signals · ksa_runs · RLS
 scripts/                        스키마 적용 · 카카오 인가 · 드라이런 · 그래프 내보내기
-docs/                           SPEC · PLAN · TASKS · GRAPH
+docs/                           SPEC · PLAN · DESIGN · TASKS · GRAPH
 ```
 
 도메인 코드는 LangGraph를 import하지 않습니다. 노드는 20줄을 넘지 않습니다 —
@@ -101,6 +105,10 @@ docs/                           SPEC · PLAN · TASKS · GRAPH
 
 **눌림목이 평평한 종목에서도 잡혔다.** "MA60이 4주 전보다 높다"를 부호로만 보면,
 상승봉 하나에 0.03%만 올라도 참이 됩니다. 기울기에 4주간 0.5% 하한을 넣었습니다.
+
+웹을 만들며 하나 더 찾았습니다 — **표의 거래대금·등락률이 뒤섞여 있었습니다.**
+주봉 눌림목은 주간 합계를, MTF는 일간 값을 같은 열에 담고 있어 정렬이 무의미했습니다.
+표시용 값은 언제나 일봉에서 가져오도록 고쳤습니다.
 
 ## 라이선스
 
