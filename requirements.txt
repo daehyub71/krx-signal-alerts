@@ -1,4 +1,7 @@
 langgraph>=1.2,<2
 supabase>=2.31,<3
+# 봉 대량 조회는 REST가 아니라 직접 SQL로 한다 (alerts/store.py) — 런타임 의존성이다.
+# M1에서 REST → psycopg로 바꾸면서 dev 전용에서 승격됐다.
+psycopg[binary]>=3.2
 # macOS 파이썬은 CA 번들이 없다. 명시적으로 쓴다 (alerts/notify/tls.py)
 certifi>=2024.0
