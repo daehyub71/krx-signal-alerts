@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from alerts import store, universe
+from alerts.freshness import is_stale
 from alerts.models import STRATEGY_LABELS, SendResult, StrategyName
 from alerts.state import (
     STATUS_FAILED,
@@ -28,13 +30,15 @@ class AlertRunError(RuntimeError):
 
 
 def load_meta(state: AlertState) -> dict[str, Any]:
-    """`ksc_meta`에서 데이터 기준일을 읽는다 (F3).
+    """적재된 데이터의 실제 최신 거래일을 읽고 신선도를 판정한다 (F3).
 
-    TODO(M1): store.fetch_data_date()를 붙이고 `stale`을 실제로 판정한다.
-    M0에서는 상태를 바꾸지 않아 초기 상태의 `stale`이 그대로 분기를 정한다 —
-    덕분에 분기 양쪽을 지금 테스트할 수 있다.
+    `ksc_meta`가 아니라 `ksc_bars.max(d)`를 본다 — 메타는 마지막 실행이 무엇을
+    했는지를 적을 뿐 데이터가 최신인지를 보증하지 않는다 (SPEC F3).
     """
-    return {}
+    data_date = store.fetch_data_date(store.conn())
+    stale = is_stale(data_date, state["run_date"])
+    print(f"[load_meta] 데이터 기준일 {data_date} · {'낡음' if stale else '최신'}")
+    return {"data_date": data_date, "stale": stale}
 
 
 def check_freshness(state: AlertState) -> str:
@@ -61,19 +65,20 @@ def abort_stale(state: AlertState) -> dict[str, Any]:
 
 
 def build_universe(state: AlertState) -> dict[str, Any]:
-    """스팩·우선주·저유동성을 뺀 종목 목록을 만든다 (F1).
-
-    TODO(M1): universe.build()를 붙인다.
-    """
-    return {"universe": []}
+    """스팩·우선주·저유동성을 뺀 종목 목록을 만든다 (F1)."""
+    c = store.conn()
+    result = universe.build(store.fetch_tickers(c), store.fetch_avg_amounts(c))
+    print(f"[build_universe] {result.summary()}")
+    return {"universe": result.kept}
 
 
 def load_bars(state: AlertState) -> dict[str, Any]:
-    """유니버스 전 종목의 일·주·월봉을 읽는다 (F2).
-
-    TODO(M1): store.fetch_bars() — range() 페이지네이션과 300개 청크가 여기 있다.
-    """
-    return {"bars": {}}
+    """유니버스 전 종목의 일·주·월봉을 읽는다 (F2)."""
+    codes = [m.ticker for m in state["universe"]]
+    barsets = store.fetch_barsets(store.conn(), codes)
+    rows = sum(len(b.daily) + len(b.weekly) + len(b.monthly) for b in barsets.values())
+    print(f"[load_bars] {len(barsets)}종목 · {rows:,}행")
+    return {"bars": barsets}
 
 
 # ── 전략 (병렬 5) ───────────────────────────────────────────────

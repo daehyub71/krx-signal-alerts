@@ -10,7 +10,7 @@ import argparse
 import sys
 from datetime import date, datetime
 
-from alerts import config
+from alerts import config, store
 from alerts.graph import build_graph
 from alerts.nodes import AlertRunError
 from alerts.state import initial_state
@@ -61,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     except AlertRunError as exc:
         print(f"[alerts] 실패: {exc}", file=sys.stderr)
         return 1
+    finally:
+        store.close()
 
     print(f"[alerts] status={final['status']} "
           f"universe={len(final['universe'])} signals={len(final['signals'])}")

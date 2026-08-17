@@ -5,6 +5,12 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "N"]
 
+[tool.ruff.lint.isort]
+# 이걸 안 주면 ruff가 supabase를 로컬 패키지로 오인해 import 순서를 뒤집는다
+# (venv/lib에 설치돼 있어도 프로젝트 루트 기준으로 판단한다).
+known-first-party = ["alerts"]
+known-third-party = ["supabase", "psycopg", "langgraph", "pytest"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

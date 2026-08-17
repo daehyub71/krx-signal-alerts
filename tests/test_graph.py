@@ -73,13 +73,25 @@ def failed_send_node(channel: str, error: str = "boom") -> Any:
     return node
 
 
+# DB를 타는 노드는 **항상** 스텁으로 덮는다.
+# 배선 테스트가 실DB에 붙으면 네트워크 없이는 못 돌고, 느려지고, 데이터에 따라 결과가 흔들린다.
+IO_NODES = ("load_meta", "build_universe", "load_bars", "suppress", "persist")
+
+
+def wiring(**overrides: Any) -> Any:
+    """I/O가 차단된 그래프. 배선만 검사한다 (PLAN §6)."""
+    stubs: dict[str, Any] = {n: const_node({}) for n in IO_NODES}
+    stubs.update(overrides)
+    return build_graph(stubs)
+
+
 # ── ① 분기 ──────────────────────────────────────────────────────
 
 
 def test_fresh_path_runs_the_screening_nodes() -> None:
     log: list[str] = []
-    overrides = {n: trace_node(n, log) for n in ("abort_stale", "build_universe", "load_bars")}
-    build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
+    wiring(**{n: trace_node(n, log) for n in ("abort_stale", "build_universe", "load_bars")}
+           ).invoke(initial_state(RUN_DATE, ["kakao"]))
 
     assert "build_universe" in log
     assert "load_bars" in log
@@ -93,7 +105,7 @@ def test_stale_path_skips_the_screening_nodes() -> None:
     }
     overrides["load_meta"] = const_node({"stale": True})
 
-    build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
+    wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
 
     assert "abort_stale" in log
     assert "build_universe" not in log
@@ -108,7 +120,7 @@ def test_stale_path_still_reaches_the_send_nodes() -> None:
         "send_kakao": trace_node("send_kakao", log),
         "send_email": trace_node("send_email", log),
     }
-    build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert log.count("send_kakao") == 1
     assert log.count("send_email") == 1
@@ -125,7 +137,7 @@ def test_all_five_strategy_results_are_merged() -> None:
     overrides: dict[str, Any] = {
         f"strategy_{name}": signal_node(name, f"T_{name}") for name in STRATEGY_NAMES
     }
-    final = build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
+    final = wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
 
     assert len(final["signals"]) == len(STRATEGY_NAMES) == 5
     assert {s.strategy for s in final["signals"]} == set(STRATEGY_NAMES)
@@ -138,14 +150,14 @@ def test_strategy_node_returning_nothing_does_not_drop_the_others() -> None:
     }
     overrides["strategy_mtf"] = signal_node("mtf", "005930")
 
-    final = build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
+    final = wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao"]))
 
     assert len(final["signals"]) == 1
     assert final["signals"][0].ticker == "005930"
 
 
 def test_send_results_from_both_channels_are_merged() -> None:
-    final = build_graph().invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    final = wiring().invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert set(final["results"]) == {"kakao", "email"}
 
@@ -161,7 +173,7 @@ def test_channel_failure_still_reaches_record_run() -> None:
         "record_run": trace_node("record_run", log, {"status": STATUS_PARTIAL}),
     }
     with pytest.raises(AlertRunError):
-        build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+        wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert log == ["record_run"], "실패해도 기록이 먼저다"
 
@@ -177,7 +189,7 @@ def test_one_channel_down_the_other_still_runs() -> None:
         ),
     }
     with pytest.raises(AlertRunError):
-        build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+        wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert log == ["send_email"], "카카오가 죽어도 메일은 간다"
 
@@ -187,7 +199,7 @@ def test_partial_failure_is_not_reported_as_success() -> None:
         "send_kakao": failed_send_node("kakao", "KOE322"),
         "finalize": const_node({}),  # 예외를 막고 status만 본다
     }
-    final = build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    final = wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert final["status"] == STATUS_PARTIAL
 
@@ -198,7 +210,7 @@ def test_all_channels_failed_is_send_failed() -> None:
         "send_email": failed_send_node("email"),
         "finalize": const_node({}),
     }
-    final = build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    final = wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert final["status"] == STATUS_FAILED
 
@@ -207,7 +219,7 @@ def test_all_channels_failed_is_send_failed() -> None:
 
 
 def test_skeleton_completes_end_to_end() -> None:
-    final = build_graph().invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    final = wiring().invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert final["status"] == STATUS_OK
     assert final["run_date"] == RUN_DATE
@@ -216,13 +228,13 @@ def test_skeleton_completes_end_to_end() -> None:
 
 def test_stale_run_ends_with_stale_status() -> None:
     overrides: dict[str, Any] = {"load_meta": const_node({"stale": True})}
-    final = build_graph(overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
+    final = wiring(**overrides).invoke(initial_state(RUN_DATE, ["kakao", "email"]))
 
     assert final["status"] == STATUS_STALE
 
 
 def test_single_channel_only_sends_that_channel() -> None:
-    final = build_graph().invoke(initial_state(RUN_DATE, ["email"]))
+    final = wiring().invoke(initial_state(RUN_DATE, ["email"]))
 
     assert set(final["results"]) == {"email"}
 

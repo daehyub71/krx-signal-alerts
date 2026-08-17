@@ -93,6 +93,13 @@ class Signal:
     amount: int = 0
     in_progress: bool = False  # 진행 중인 주봉 기준 판정 (F8)
 
+    # 아래는 전략이 아니라 rank/suppress 단계가 채운다.
+    # 프로즌을 유지하고 `dataclasses.replace()`로 갈아끼운다 — 전략의 순수성을 지키기 위해서다.
+    rank_no: int | None = None
+    suppressed: bool = False
+    sent_kakao: bool = False
+    sent_email: bool = False
+
     def evidence(self) -> dict[str, Any]:
         """`ksa_signals.evidence`에 저장할 형태로 편다 (PLAN §4 공유 계약)."""
         return {

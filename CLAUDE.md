@@ -73,9 +73,10 @@ cd web && npm run lint && npm test && npm run build   # 웹 (M5 이후)
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | 배치 읽기·쓰기 (RLS 우회). **웹 번들에 절대 넣지 않는다** |
 | `SUPABASE_ANON_KEY` | 웹 읽기 전용 |
 | `SUPABASE_DATABASE_URL` | 스키마 적용(DDL) 전용 |
-| `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` | 카카오 나에게 보내기 |
-| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Gmail SMTP (앱 비밀번호 — 계정 비밀번호가 아니다) |
-| `ALERT_EMAIL_TO` | 수신자 쉼표 구분 목록 |
+| `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` / `KAKAO_REDIRECT_URI` | 카카오 나에게 보내기 |
+| `KAKAO_REFRESH_TOKEN` | 최초 인가로 발급. 갱신되면 **반드시 저장**한다 (약 2개월) |
+| `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` | Gmail SMTP (앱 비밀번호 — 계정 비밀번호가 아니다) |
+| `RECIPIENTS` | 수신자 쉼표 구분 목록 |
 
 ## 이 프로젝트에서 조심할 것
 
