@@ -1,0 +1,6 @@
+-r requirements.txt
+ruff>=0.8.0
+mypy>=1.13.0
+pytest>=8.3.0
+# 스키마 적용(DDL) 전용 — 배치 런타임에는 필요 없다. supabase-py는 DDL을 지원하지 않는다.
+psycopg[binary]>=3.2
