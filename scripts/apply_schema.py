@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.check:
             return 0
 
-        conn.execute(SCHEMA.read_text(encoding="utf-8"))  # type: ignore[arg-type]
+        conn.execute(SCHEMA.read_text(encoding="utf-8"))
         conn.commit()
 
         print("\n[적용 후]")
