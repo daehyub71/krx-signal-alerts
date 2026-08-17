@@ -8,9 +8,11 @@ M0 단계에서는 전부 통과 함수다. `TODO(M?)` 표시가 붙은 자리�
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
-from alerts import store, universe
+from alerts import rank as ranking
+from alerts import store, strategies, universe
 from alerts.freshness import is_stale
 from alerts.models import STRATEGY_LABELS, SendResult, StrategyName
 from alerts.state import (
@@ -95,12 +97,23 @@ def make_strategy_node(name: StrategyName) -> Any:
 
     Note:
         노드는 래퍼일 뿐이다. 판정 로직은 `alerts.strategies.{name}`의 순수 함수에 있고,
-        노드는 그것을 부르기만 한다.
+        노드는 그것을 부르기만 한다 (N11).
     """
+    strategy = strategies.BY_NAME[name]
 
     def node(state: AlertState) -> dict[str, Any]:
-        # TODO(M2): strategies.{name}.run(state["bars"], state["run_date"])
-        return {"signals": []}
+        data_date = state.get("data_date")
+        if data_date is None or not strategy.runs_on(data_date, state["run_date"]):
+            print(f"[{name}] 오늘은 산출 주기가 아니다 — skip")
+            return {}
+        bars = state["bars"]
+        found = [
+            sig
+            for m in state["universe"]
+            if (bs := bars.get(m.ticker)) and (sig := strategy.evaluate(m, bs))
+        ]
+        print(f"[{name}] 신호 {len(found)}건")
+        return {"signals": found}
 
     node.__name__ = f"strategy_{name}"
     node.__doc__ = f"{STRATEGY_LABELS[name]} 전략 노드."
@@ -113,24 +126,35 @@ def make_strategy_node(name: StrategyName) -> Any:
 def suppress(state: AlertState) -> dict[str, Any]:
     """최근 N일 내 같은 신호를 발송 대상에서 뺀다 (F10).
 
-    TODO(M2): rank.suppress() — 판정 근거는 메모리가 아니라 DB다.
+    판정 근거는 메모리가 아니라 DB다 — 배치를 재실행해도 같은 결과가 나와야 한다.
     """
-    return {}
+    signals = state["signals"]
+    if not signals:
+        return {"ranked": []}
+    since = state["run_date"] - timedelta(days=ranking.MAX_SUPPRESS_DAYS)
+    marked = ranking.suppress(signals, store.fetch_recent_signal_keys(store.conn(), since))
+    print(f"[suppress] {sum(1 for s in marked if s.suppressed)}건 억제")
+    # `signals`에 쓰면 리듀서가 append해 목록이 두 배가 된다. 작업본은 `ranked`로 넘긴다.
+    return {"ranked": marked}
 
 
 def rank(state: AlertState) -> dict[str, Any]:
-    """전략 내 백분위로 정규화해 정렬하고 카카오용 상위 N건을 고른다 (F11).
-
-    TODO(M2): rank.apply()
-    """
-    return {"ranked": [], "kakao_top": []}
+    """전략 내 백분위로 정규화해 정렬하고 카카오용 상위 N건을 고른다 (F11)."""
+    ranked, top = ranking.rank(state["ranked"], limit=ranking.KAKAO_LIMIT)
+    print(f"[rank] 발송 대상 {len(top)}건 / 전체 {len(ranked)}건")
+    return {"ranked": ranked, "kakao_top": top}
 
 
 def persist(state: AlertState) -> dict[str, Any]:
     """판정된 신호를 전부 `ksa_signals`에 저장한다 (F12).
 
-    TODO(M2): store.upsert_signals() — 발송 여부와 무관하게 전부 남긴다.
+    발송 여부와 무관하게 전부 남긴다 — 웹 이력과 중복 억제가 이걸 읽는다.
     """
+    if state.get("dry_run"):
+        print(f"[persist] dry-run — {len(state['ranked'])}건 저장 생략")
+        return {}
+    n = store.upsert_signals(store.rest_client(), state["ranked"])
+    print(f"[persist] {n}건 저장")
     return {}
 
 

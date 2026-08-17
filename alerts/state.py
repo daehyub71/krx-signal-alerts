@@ -56,7 +56,7 @@ class AlertState(TypedDict, total=False):
     signals: Annotated[list[Signal], operator.add]
 
     ranked: list[Signal]
-    kakao_top: list[Signal]
+    kakao_top: list[Signal]        # 카카오에 담을 상위 N건 (D8)
 
     # 발송 2개가 동시에 쓰는 키 — 리듀서 필수
     results: Annotated[dict[str, SendResult], merge_results]
