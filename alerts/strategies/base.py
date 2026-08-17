@@ -72,7 +72,7 @@ def ratio(value: float) -> str:
 def make_signal(
     meta: TickerMeta,
     strategy: StrategyName,
-    bars: Sequence[Bar],
+    bars: BarSet,
     score: float,
     checks: Checks,
     *,
@@ -83,13 +83,20 @@ def make_signal(
     Args:
         meta: 종목 메타.
         strategy: 전략 이름.
-        bars: 기준이 되는 봉 배열 (보통 일봉). 마지막 봉의 값을 신호에 담는다.
+        bars: 종목의 일·주·월봉 전체.
         score: 전략 내 점수. 정규화는 rank 단계가 한다.
         checks: 조건 기록.
         in_progress: 진행 중인 봉으로 판정했는가 (F8).
+
+    Note:
+        **표시용 값(종가·등락률·거래량·거래대금)은 언제나 일봉에서 가져온다.**
+        전략마다 기준 봉이 달라(주봉 눌림목·월봉 턴어라운드) 각자의 봉에서 뽑으면
+        한 표 안에 주간 합계와 일간 값이 섞여 정렬이 무의미해진다 (2026-08-17 화면에서 발견).
+        전략 고유의 값은 이미 `conditions`에 들어 있다.
     """
-    last = bars[-1]
-    prev_close = bars[-2].c if len(bars) >= 2 else last.c
+    series: Sequence[Bar] = bars.daily or bars.weekly or bars.monthly
+    last = series[-1]
+    prev_close = series[-2].c if len(series) >= 2 else last.c
     return Signal(
         d=last.d,
         strategy=strategy,

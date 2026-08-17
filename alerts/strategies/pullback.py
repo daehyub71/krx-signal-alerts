@@ -83,4 +83,4 @@ def evaluate(meta: TickerMeta, bars: BarSet) -> Signal | None:
     # 꼬리가 길고 거래량이 마를수록 높은 점수.
     score = tail_ratio * (1.0 - vol_ratio)
 
-    return make_signal(meta, name, bars.weekly, score, ck)
+    return make_signal(meta, name, bars, score, ck)

@@ -15,6 +15,12 @@ create table if not exists ksa_signals (
   d           date not null,              -- 신호 기준일 (봉의 마지막 거래일)
   strategy    text not null,
   ticker      text not null,
+
+  -- 종목명을 여기에 둔다(비정규화). ksc_tickers로의 외래키를 일부러 걸지 않았으므로
+  -- Supabase REST가 조인을 못 한다. 게다가 이 테이블은 **그날의 스냅샷**이라,
+  -- 사명이 바뀌어도 신호가 났던 시점의 이름이 남는 편이 이력으로서 옳다 (DESIGN §1).
+  name        text not null default '',
+
   score       double precision not null,
 
   -- 당일 전체 랭킹. 발송 상한(10건)에 밀린 신호는 null일 수 있다.
@@ -44,6 +50,12 @@ create table if not exists ksa_signals (
 
 -- ksc_tickers로의 외래키를 일부러 걸지 않는다.
 -- 상장폐지로 종목이 지워지면 과거 신호 이력까지 함께 사라진다. 이력은 남아야 한다.
+
+-- ── 마이그레이션 ──────────────────────────────
+-- `create table if not exists`는 **이미 있는 테이블에 열을 추가하지 않는다.**
+-- 위 정의만 고치면 새 DB에서만 반영되고 운영 DB는 조용히 그대로 남는다.
+-- 열을 늘릴 때는 반드시 여기에 한 줄을 더한다.
+alter table ksa_signals add column if not exists name text not null default '';
 
 -- 중복 억제(F10) 조회용: "이 종목·이 전략이 최근에 나온 적 있나".
 -- PK는 (d, strategy, ticker) 순서라 종목축 조회를 못 받는다.

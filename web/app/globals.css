@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/*
+ * 색은 KRX 규약을 따른다 — 적색 상승 · 청색 하락. 서구 관례(녹색 상승)와 반대다.
+ * 프로젝트 문서 아티팩트와 같은 계열로 맞춰 화면과 문서가 한 몸으로 읽히게 한다 (DESIGN §5).
+ *
+ * 다크 모드는 세 상태를 모두 처리한다:
+ *   - 밝은 팔레트를 bare :root에 둔다 (시스템 기본값)
+ *   - prefers-color-scheme: dark 에서 토큰만 덮되, 명시적 light 선택이 이기게 한다
+ *   - [data-theme="dark"] 에서 한 번 더 덮어 토글이 양방향으로 이긴다
+ */
+:root {
+  --ground: #eff1f5;
+  --surface: #ffffff;
+  --sunk: #e5e8ef;
+  --raise: #fafbfd;
+  --ink: #121829;
+  --ink-2: #3d465f;
+  --muted: #626d8a;
+  --faint: #8b94ac;
+  --line: #d3d8e4;
+  --line-2: #bfc6d6;
+  --up: #c9283e;
+  --up-w: #fbeaec;
+  --down: #1f63a8;
+  --down-w: #e7f0f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0d1120;
+    --surface: #151b2c;
+    --sunk: #101626;
+    --raise: #1a2135;
+    --ink: #e4e8f2;
+    --ink-2: #bac3d8;
+    --muted: #8c97b5;
+    --faint: #6b7694;
+    --line: #272f49;
+    --line-2: #38425f;
+    --up: #ff6377;
+    --up-w: #2a1620;
+    --down: #5fa6ec;
+    --down-w: #101f31;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0d1120;
+  --surface: #151b2c;
+  --sunk: #101626;
+  --raise: #1a2135;
+  --ink: #e4e8f2;
+  --ink-2: #bac3d8;
+  --muted: #8c97b5;
+  --faint: #6b7694;
+  --line: #272f49;
+  --line-2: #38425f;
+  --up: #ff6377;
+  --up-w: #2a1620;
+  --down: #5fa6ec;
+  --down-w: #101f31;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-raise: var(--raise);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-up: var(--up);
+  --color-up-w: var(--up-w);
+  --color-down: var(--down);
+  --color-down-w: var(--down-w);
+
+  --font-sans:
+    Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  /* 배경을 명시한다. 투명하게 두면 호스트의 바탕색을 빌려 쓴다. */
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* 한글은 단어 중간에서 끊기면 읽기 나쁘다. */
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 숫자가 세로로 안 맞으면 표가 안 읽힌다. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--up);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

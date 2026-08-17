@@ -96,4 +96,4 @@ def evaluate(meta: TickerMeta, bars: BarSet) -> Signal | None:
     disparity = (dc[-1] - d_f) / d_f * 100.0
     score = 1.0 / (1.0 + max(disparity, 0.0))
 
-    return make_signal(meta, name, bars.daily, score, ck)
+    return make_signal(meta, name, bars, score, ck)

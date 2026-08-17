@@ -64,3 +64,36 @@ def test_barset_by_timeframe() -> None:
 
 def test_every_strategy_has_a_label() -> None:
     assert set(STRATEGY_LABELS) == set(STRATEGY_NAMES)
+
+
+def test_signal_carries_the_name_for_the_web() -> None:
+    """`ksa_signals`에 외래키가 없어 웹이 조인을 못 한다. 이름을 함께 저장한다 (DESIGN §1)."""
+    from alerts.models import Signal
+
+    sig = Signal(d=date(2026, 8, 17), strategy="mtf", ticker="005930",
+                 name="삼성전자", score=1.0)
+    assert sig.name == "삼성전자"
+
+
+def test_display_values_always_come_from_the_daily_bar() -> None:
+    """전략마다 기준 봉이 달라도 표의 공통 열은 비교 가능해야 한다.
+
+    주봉 눌림목이 주간 거래대금을, MTF가 일간 거래대금을 담으면
+    한 표에서 거래대금 정렬이 무의미해진다 (2026-08-17 화면에서 발견).
+    """
+    from alerts.models import BarSet, TickerMeta
+    from alerts.strategies.base import Checks, make_signal
+
+    daily = Bar(d=date(2026, 8, 14), o=100, h=110, low=95, c=105, v=1000, a=105_000)
+    prev = Bar(d=date(2026, 8, 13), o=100, h=100, low=100, c=100, v=900, a=90_000)
+    weekly = Bar(d=date(2026, 8, 14), o=80, h=110, low=80, c=105, v=9000, a=945_000)
+
+    bars = BarSet(ticker="005930", daily=(prev, daily), weekly=(weekly,))
+    sig = make_signal(
+        TickerMeta(ticker="005930", name="삼성전자", market="KOSPI"),
+        "pullback", bars, 1.0, Checks(),
+    )
+
+    assert sig.amount == 105_000, "주봉 합계(945,000)가 아니라 일봉 값이어야 한다"
+    assert sig.volume == 1000
+    assert sig.change_pct == 5.0, "전일 대비여야 한다 (주간 대비가 아니라)"

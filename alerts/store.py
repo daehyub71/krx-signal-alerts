@@ -200,6 +200,8 @@ def upsert_signals(client: Client, signals: Sequence[Signal]) -> int:
             "d": s.d.isoformat(),
             "strategy": s.strategy,
             "ticker": s.ticker,
+            # 웹이 조인 없이 읽는다 — 이 테이블은 그날의 스냅샷이다 (DESIGN §1)
+            "name": s.name,
             "score": s.score,
             "rank_no": s.rank_no,
             "sent_kakao": s.sent_kakao,

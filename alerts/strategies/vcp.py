@@ -126,4 +126,4 @@ def evaluate(meta: TickerMeta, bars: BarSet) -> Signal | None:
 
     score = (1.0 - vol_ratio) * (1.0 - range_ratio)
 
-    return make_signal(meta, name, daily, score, ck)
+    return make_signal(meta, name, bars, score, ck)

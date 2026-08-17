@@ -78,4 +78,4 @@ def evaluate(meta: TickerMeta, bars: BarSet) -> Signal | None:
     expansion = now.width / prev.width if prev.width else 1.0
     score = expansion * amount_mult
 
-    return make_signal(meta, name, bars.weekly, score, ck, in_progress=True)
+    return make_signal(meta, name, bars, score, ck, in_progress=True)

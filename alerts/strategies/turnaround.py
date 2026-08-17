@@ -83,4 +83,4 @@ def evaluate(meta: TickerMeta, bars: BarSet) -> Signal | None:
     breakout = float(last.c) / box_high if box_high else 1.0
     score = v_mult * breakout
 
-    return make_signal(meta, name, bars.monthly, score, ck)
+    return make_signal(meta, name, bars, score, ck)
