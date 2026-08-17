@@ -21,6 +21,9 @@ KAKAO_MAX_CHARS = 200
 
 STALE_LINE = "⚠ 데이터 지연 — 시세가 갱신되지 않아 신호를 만들지 않았습니다"
 
+# "…외 N건"을 붙일 자리. 잘린 사실을 못 알리면 "오늘은 이게 다인가 보다"가 된다.
+_OMITTED_RESERVE = 10
+
 
 def _md(d: date) -> str:
     """`08/14` 형태."""
@@ -77,20 +80,27 @@ def kakao_body(
     head = f"[{_md(data_date)}] 신호 {len(signals)}건"
     budget = KAKAO_MAX_CHARS - len(head) - len(tail)
 
+    # **종목 단위로 채운다.** 블록 단위로 자르면 8건짜리 그룹 하나가 안 들어간다는
+    # 이유로 통째로 버려져, 200자 중 100자 넘게 놀리는 일이 생긴다 (2026-08-17 실측).
     lines: list[str] = []
     used = 0
     dropped = 0
     for name, items in _grouped(signals):
-        block = [f"\n▸ {STRATEGY_LABELS[name]} ({len(items)})"]
+        header = f"\n▸ {STRATEGY_LABELS[name]} ({len(items)})"
+        header_used = False
         for s in items:
-            block.append(_one_line(s))
-        chunk = "".join(block)
-        # 여지를 남긴다 — 마지막에 "외 N건"을 붙여야 하므로
-        if used + len(chunk) > budget - 10:
-            dropped += len(items)
-            continue
-        lines.append(chunk)
-        used += len(chunk)
+            line = _one_line(s)
+            need = len(line) + (0 if header_used else len(header))
+            # "…외 N건" 자리를 남겨 둔다 — 잘린 사실 자체를 못 알리면 안 된다.
+            if used + need > budget - _OMITTED_RESERVE:
+                dropped += 1
+                continue
+            if not header_used:
+                lines.append(header)
+                used += len(header)
+                header_used = True
+            lines.append(line)
+            used += len(line)
 
     body = head + "".join(lines)
     if dropped:

@@ -192,3 +192,46 @@ def test_email_groups_by_strategy_in_a_stable_order() -> None:
     b = render.email_text(list(reversed(signals)), D)
 
     assert a == b
+
+
+# ── 예산 사용 (2026-08-17 실측에서 발견) ────────────────────────
+
+
+def test_kakao_body_fills_the_budget_item_by_item() -> None:
+    """예산 안에 들어가는 종목은 하나도 버리지 않는다.
+
+    블록 단위로 자르던 때는 8건짜리 그룹이 안 맞으면 통째로 버려져,
+    200자 중 100자 넘게 놀렸다 (2026-08-17 실측).
+    """
+    signals = [sig()] + [
+        sig(strategy="vcp", ticker=f"{i:05d}0", name=f"종목{i}") for i in range(8)
+    ]
+    body = render.kakao_body(signals, D)
+
+    assert "외" not in body, "다 들어가는데 버렸다"
+    assert all(f"종목{i}" in body for i in range(8))
+    assert len(body) <= render.KAKAO_MAX_CHARS
+
+
+def test_kakao_body_keeps_filling_after_the_warning_takes_room() -> None:
+    """경고가 붙어도 남은 자리는 종목으로 채워야 한다."""
+    signals = [sig()] + [
+        sig(strategy="vcp", ticker=f"{i:05d}0", name=f"종목{i}") for i in range(8)
+    ]
+    plain = render.kakao_body(signals, D)
+    warned = render.kakao_body(signals, D, warning="메일 발송 실패")
+
+    assert "메일 발송 실패" in warned
+    assert len(warned) >= len(plain) - 30, "경고 11자 때문에 100자가 날아가면 안 된다"
+
+
+def test_kakao_body_drops_partially_not_by_whole_group() -> None:
+    """자를 때는 넘치는 만큼만 자른다."""
+    signals = [
+        sig(strategy="vcp", ticker=f"{i:05d}0", name=f"아주긴종목이름{i}") for i in range(20)
+    ]
+    body = render.kakao_body(signals, D)
+
+    assert "외" in body
+    shown = body.count("\n ")
+    assert 0 < shown < 20, "일부는 보이고 일부만 잘려야 한다"

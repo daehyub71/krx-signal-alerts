@@ -226,7 +226,7 @@ def send_kakao(state: AlertState) -> dict[str, Any]:
         top, _report_date(state), stale=state.get("stale", False), warning=warning
     )
     try:
-        tokens = kakao.refresh_access_token(config.require("KAKAO_REFRESH_TOKEN"))
+        tokens = kakao.refresh_access_token(kakao.load_refresh_token())
         kakao.send_text(tokens.access, body, config.optional("SIGNALS_WEB_URL"))
     except Exception as exc:  # noqa: BLE001
         print(f"[kakao] 실패: {exc}")
@@ -237,7 +237,9 @@ def send_kakao(state: AlertState) -> dict[str, Any]:
     if tokens.refresh:
         # 카카오가 새 리프레시 토큰을 줬다. 저장하지 않으면 옛 토큰으로 계속
         # 시도하다 2개월 뒤 조용히 죽는다 (R2).
+        kakao.save_refresh_token(tokens.refresh)
         out["kakao_refresh"] = tokens.refresh
+        print("[kakao] 새 리프레시 토큰 저장 — GitHub Secret도 갱신해야 한다 (M4)")
     return out
 
 

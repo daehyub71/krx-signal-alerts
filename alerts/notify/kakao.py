@@ -27,6 +27,9 @@ RETRIES = 3
 # 리프레시 토큰이 죽었다는 신호. 조용히 넘기면 안 된다 — 사람이 재인증해야 한다.
 DEAD_TOKEN = "KOE322"
 
+# scripts/kakao_auth.py가 만드는 파일. 로컬 전용이며 .gitignore 대상이다.
+TOKENS_FILE = ".tokens.json"
+
 
 class KakaoError(RuntimeError):
     """카카오 API 오류. `notify` 층 바깥으로 나가지 않는다."""
@@ -66,6 +69,50 @@ def _post(url: str, data: dict[str, str], headers: dict[str, str] | None = None)
             if attempt == RETRIES - 1:
                 raise KakaoError(f"{RETRIES}회 시도 후 실패 — {last}") from e
     raise KakaoError(last)
+
+
+def load_refresh_token() -> str:
+    """리프레시 토큰을 찾는다.
+
+    Returns:
+        리프레시 토큰.
+
+    Raises:
+        KakaoError: 어느 쪽에도 없을 때.
+
+    Note:
+        **환경변수가 먼저다.** CI에는 `.tokens.json`이 없고 GitHub Secrets만 있다.
+        로컬에서는 `scripts/kakao_auth.py`가 만든 파일을 그대로 쓴다 —
+        인가 직후 손으로 `.env`에 복사하는 단계를 하나 없애기 위해서다.
+    """
+    if token := config.optional("KAKAO_REFRESH_TOKEN"):
+        return token
+
+    path = config.PROJECT_ROOT / TOKENS_FILE
+    if path.is_file():
+        saved = json.loads(path.read_text(encoding="utf-8")).get("refresh_token", "")
+        if saved:
+            return str(saved)
+
+    raise KakaoError(
+        "리프레시 토큰이 없다. `python scripts/kakao_auth.py`로 인가하거나 "
+        "KAKAO_REFRESH_TOKEN을 설정하라."
+    )
+
+
+def save_refresh_token(token: str) -> None:
+    """갱신된 리프레시 토큰을 `.tokens.json`에 반영한다 (로컬 전용).
+
+    안 하면 옛 토큰으로 계속 시도하다 2개월 뒤 조용히 죽는다 (R2).
+    CI에서는 파일이 없으므로 아무 일도 하지 않는다 — Secret 갱신은 M4에서 다룬다.
+    """
+    path = config.PROJECT_ROOT / TOKENS_FILE
+    if not path.is_file():
+        return
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["refresh_token"] = token
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    path.chmod(0o600)
 
 
 def refresh_access_token(refresh_token: str) -> Tokens:
