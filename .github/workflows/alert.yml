@@ -60,3 +60,37 @@ jobs:
           python -m alerts.main \
             --channel "${{ inputs.channel || 'both' }}" \
             ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      # 하위 `krx-signal-briefing`을 깨운다 (하위 SPEC D3·F0).
+      #
+      # **`workflow_run`은 같은 저장소 안에서만 동작한다** — 다른 리포를 깨우려면
+      # `repository_dispatch`뿐이고, 그래서 토큰이 필요하다.
+      #
+      # `if: always()`가 아니다. 스크리닝이 실패했으면 `ksa_signals`가 비어 있어
+      # 브리핑이 깨어나도 할 일이 없다. 그런 날은 하위의 예비 cron(09:05 KST)이
+      # `ksa_runs`를 보고 판단한다.
+      #
+      # **실패해도 이 워크플로를 실패시키지 않는다** — 알림은 이미 나갔다.
+      # 토큰이 만료되면 하위는 예비 cron으로 돈다.
+      - name: 브리핑 깨우기
+        if: success() && !inputs.dry_run
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.BRIEFING_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::BRIEFING_DISPATCH_TOKEN 없음 — 하위는 예비 cron으로 돕니다"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/dispatch.out -w "%{http_code}" -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/daehyub71/krx-signal-briefing/dispatches \
+            -d '{"event_type":"alert-completed"}')
+          if [ "$code" = "204" ]; then
+            echo "브리핑 깨움 (204)"
+          else
+            echo "::warning::브리핑 깨우기 실패 HTTP $code — 하위는 예비 cron으로 돕니다"
+            head -c 300 /tmp/dispatch.out
+          fi
