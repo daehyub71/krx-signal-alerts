@@ -99,10 +99,12 @@ jobs:
         if: success() && !inputs.dry_run
         continue-on-error: true
         env:
-          TOKEN: ${{ secrets.BRIEFING_DISPATCH_TOKEN }}
+          # 하위 `krx-signal-verify` 전용 fine-grained PAT (대상 리포 1개 · Contents write).
+          # BRIEFING_DISPATCH_TOKEN은 그 리포 권한이 없어 403이 났다 (2026-09-07 실측).
+          TOKEN: ${{ secrets.VERIFY_DISPATCH_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "::warning::BRIEFING_DISPATCH_TOKEN 없음 — 하위는 예비 cron으로 돕니다"
+            echo "::warning::VERIFY_DISPATCH_TOKEN 없음 — 하위는 예비 cron으로 돕니다"
             exit 0
           fi
           code=$(curl -sS -o /tmp/dispatch2.out -w "%{http_code}" -X POST \
